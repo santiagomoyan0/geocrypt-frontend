@@ -1,17 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import FileUpload from '../components/Fileupload';
 import Login from '../components/Login';
-import FileUpload from '../components/FileUpload';
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     // Verificar si hay un token guardado
-    const token = localStorage.getItem('token');
-    if (token) {
-      setIsLoggedIn(true);
-    }
+    const checkToken = async () => {
+      const token = await AsyncStorage.getItem('token');
+      if (token) {
+        setIsLoggedIn(true);
+      }
+    };
+    checkToken();
   }, []);
 
   return (
