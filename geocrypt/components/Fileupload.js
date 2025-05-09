@@ -1,9 +1,9 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
 import React, { useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View, SafeAreaView } from 'react-native';
 import { fileService } from '../app/lib/api';
-import LogoutButton from '../components/LogoutButton';
+import BottomTabBar from './BottomTabBar';
 
 const FileUpload = () => {
   const [uploading, setUploading] = useState(false);
@@ -61,30 +61,54 @@ const FileUpload = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity 
-        style={[styles.button, (uploading || isPicking) && styles.buttonDisabled]} 
-        onPress={handleUpload}
-        disabled={uploading || isPicking}
-      >
-        <Text style={styles.buttonText}>
-          {uploading ? 'Subiendo...' : isPicking ? 'Seleccionando...' : 'Subir Archivo'}
-        </Text>
-      </TouchableOpacity>
-      <LogoutButton />
-    </View>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <TouchableOpacity 
+            style={[styles.button, (uploading || isPicking) && styles.buttonDisabled]} 
+            onPress={handleUpload}
+            disabled={uploading || isPicking}
+          >
+            <Text style={styles.buttonText}>
+              {uploading ? 'Subiendo...' : isPicking ? 'Seleccionando...' : 'Subir Archivo'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <BottomTabBar />
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
   container: {
+    flex: 1,
+    position: 'relative',
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
   },
   button: {
     backgroundColor: '#007AFF',
     padding: 15,
-    borderRadius: 5,
+    borderRadius: 10,
     alignItems: 'center',
+    width: '80%',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   buttonDisabled: {
     backgroundColor: '#999',
@@ -92,6 +116,7 @@ const styles = StyleSheet.create({
   buttonText: {
     color: 'white',
     fontWeight: 'bold',
+    fontSize: 16,
   },
 });
 
