@@ -2,6 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { API_TIMEOUT, API_URL } from '../../constants/config';
 import * as DocumentPicker from 'expo-document-picker';
+import * as crypto from '../crypto';
+import * as ngeohash from 'ngeohash';
+import * as FileSystem from 'expo-file-system';
 
 // Crear instancia de axios
 const api = axios.create({
@@ -142,34 +145,107 @@ export const authService = {
 export const fileService = {
   uploadFile: async (file, latitude, longitude) => {
     try {
+      // Generar el geohash
+      const gh = ngeohash.encode(latitude, longitude, 7);
+      
+      // Leer el archivo como base64
+      const fileContent = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: FileSystem.EncodingType.Base64
+      });
+      
+      // Cifrar el contenido
+      const encryptedContent = await crypto.encryptFile(fileContent, latitude, longitude);
+      
+      // Crear un archivo temporal encriptado
+      const tempEncryptedFileUri = `${FileSystem.cacheDirectory}${file.name}.enc`;
+      await FileSystem.writeAsStringAsync(tempEncryptedFileUri, encryptedContent, {
+        encoding: FileSystem.EncodingType.Base64
+      });
+      
+      // Crear el FormData
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('latitude', latitude);
-      formData.append('longitude', longitude);
-      console.log('FormData:', formData);
-      console.log('Subiendo archivo:', { latitude, longitude });
+      
+      // Agregar el archivo cifrado
+      formData.append('file', {
+        uri: tempEncryptedFileUri,
+        type: 'application/octet-stream',
+        name: `${file.name}.enc`,
+        size: encryptedContent.length
+      });
+      
+      // Agregar los otros campos
+      formData.append('latitude', latitude.toString());
+      formData.append('longitude', longitude.toString());
+      formData.append('geohash', gh);
+      
+      // Log del FormData para debug
+      console.log('FormData contents:');
+      for (let pair of formData.entries()) {
+        if (pair[0] === 'file') {
+          console.log('file:', {
+            name: pair[1].name,
+            type: pair[1].type,
+            size: pair[1].size
+          });
+        } else {
+          console.log(pair[0] + ': ' + pair[1]);
+        }
+      }
+
       const response = await api.post('/files/upload', formData, {
         headers: {
+          'Accept': 'application/json',
           'Content-Type': 'multipart/form-data',
         },
+        transformRequest: (data) => {
+          return data;
+        },
+        timeout: 30000
       });
-      console.log('Archivo subido exitosamente');
+      
+      // Eliminar el archivo temporal encriptado
+      await FileSystem.deleteAsync(tempEncryptedFileUri);
+      
+      console.log('Archivo cifrado subido exitosamente');
       return response.data;
     } catch (error) {
       console.error('Error al subir archivo:', error);
+      if (error.response) {
+        console.error('Detalles del error:', {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers
+        });
+      } else if (error.request) {
+        console.error('No se recibió respuesta del servidor:', error.request);
+      } else {
+        console.error('Error al configurar la petición:', error.message);
+      }
       throw error;
     }
   },
 
-  downloadFile: async (fileId, geohash) => {
+
+  downloadFile: async (fileId, latitude, longitude) => {
     try {
-      console.log('Descargando archivo:', { fileId, geohash });
+      // Verificar acceso al archivo
+      await crypto.verifyFileAccess(fileId, latitude, longitude);
+      
+      console.log('Descargando archivo:', { fileId });
       const response = await api.get(`/download/${fileId}`, {
-        params: { geohash },
         responseType: 'blob',
       });
-      console.log('Archivo descargado exitosamente');
-      return response.data;
+      
+      // Descifrar el contenido
+      const decryptedContent = await crypto.decryptFile(
+        await response.data.text(),
+        latitude,
+        longitude,
+        fileId.split('-').pop() // Obtener el tipo de archivo del ID
+      );
+      
+      console.log('Archivo descifrado exitosamente');
+      return decryptedContent;
     } catch (error) {
       console.error('Error al descargar archivo:', error);
       throw error;
