@@ -3,10 +3,12 @@ import { View, Text, StyleSheet, FlatList, SafeAreaView, TouchableOpacity } from
 import { fileService } from './lib/api';
 import BottomTabBar from '../components/BottomTabBar';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 const FilesScreen = () => {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     loadFiles();
@@ -35,7 +37,7 @@ const FilesScreen = () => {
   const renderFileItem = ({ item }) => {
     console.log('Renderizando archivo:', item); // Debug log
     return (
-      <TouchableOpacity style={styles.fileItem}>
+      <TouchableOpacity style={styles.fileItem} onPress={() => router.push({ pathname: '/file-detail', params: { file: JSON.stringify(item) } })}>
         <View style={styles.fileIconContainer}>
           <Ionicons name="document" size={24} color="#007AFF" />
         </View>
