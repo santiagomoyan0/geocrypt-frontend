@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
 const FilesScreen = () => {
-  const [files, setFiles] = useState([]);
+  const [folders, setFolders] = useState([]); // [{ geohash, files: [] }]
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -17,8 +17,15 @@ const FilesScreen = () => {
   const loadFiles = async () => {
     try {
       const response = await fileService.listFiles();
-      console.log('Archivos recibidos:', response); // Debug log
-      setFiles(response);
+      // Agrupar archivos por geohash
+      const grouped = {};
+      response.forEach(file => {
+        const gh = file.geohash || 'Sin ubicación';
+        if (!grouped[gh]) grouped[gh] = [];
+        grouped[gh].push(file);
+      });
+      const foldersArr = Object.entries(grouped).map(([geohash, files]) => ({ geohash, files }));
+      setFolders(foldersArr);
     } catch (error) {
       console.error('Error al cargar archivos:', error);
     } finally {
@@ -26,40 +33,18 @@ const FilesScreen = () => {
     }
   };
 
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const renderFileItem = ({ item }) => {
-    console.log('Renderizando archivo:', item); // Debug log
-    return (
-      <TouchableOpacity style={styles.fileItem} onPress={() => router.push({ pathname: '/file-detail', params: { file: JSON.stringify(item) } })}>
-        <View style={styles.fileIconContainer}>
-          <Ionicons name="document" size={24} color="#007AFF" />
-        </View>
-        <View style={styles.fileInfo}>
-          <Text style={styles.fileName} numberOfLines={1}>
-            {item.filename || item.name || 'Archivo sin nombre'}
-          </Text>
-          <View style={styles.fileDetails}>
-            <Text style={styles.fileDate}>
-              {new Date(item.created_at).toLocaleDateString()}
-            </Text>
-            {item.size && (
-              <Text style={styles.fileSize}>
-                {formatFileSize(item.size)}
-              </Text>
-            )}
-          </View>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color="#666" />
-      </TouchableOpacity>
-    );
-  };
+  const renderFolderItem = ({ item }) => (
+    <TouchableOpacity style={styles.folderItem} onPress={() => router.push({ pathname: '/folder-files', params: { geohash: item.geohash, files: JSON.stringify(item.files) } })}>
+      <View style={styles.folderIconContainer}>
+        <Ionicons name="folder" size={28} color="#007AFF" />
+      </View>
+      <View style={styles.folderInfo}>
+        <Text style={styles.folderName}>{item.geohash}</Text>
+        <Text style={styles.folderCount}>{item.files.length} archivo(s)</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color="#666" />
+    </TouchableOpacity>
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -72,16 +57,16 @@ const FilesScreen = () => {
             <View style={styles.centerContent}>
               <Text style={styles.loadingText}>Cargando archivos...</Text>
             </View>
-          ) : files.length === 0 ? (
+          ) : folders.length === 0 ? (
             <View style={styles.centerContent}>
               <Ionicons name="folder-open" size={48} color="#666" />
               <Text style={styles.emptyText}>No hay archivos disponibles</Text>
             </View>
           ) : (
             <FlatList
-              data={files}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={renderFileItem}
+              data={folders}
+              keyExtractor={(item) => item.geohash}
+              renderItem={renderFolderItem}
               contentContainerStyle={styles.listContent}
             />
           )}
@@ -122,7 +107,7 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 10,
   },
-  fileItem: {
+  folderItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 15,
@@ -138,7 +123,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 1.41,
   },
-  fileIconContainer: {
+  folderIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -147,25 +132,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 15,
   },
-  fileInfo: {
+  folderInfo: {
     flex: 1,
   },
-  fileName: {
+  folderName: {
     fontSize: 16,
     fontWeight: '500',
     color: '#333',
     marginBottom: 4,
   },
-  fileDetails: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  fileDate: {
-    fontSize: 12,
-    color: '#666',
-    marginRight: 10,
-  },
-  fileSize: {
+  folderCount: {
     fontSize: 12,
     color: '#666',
   },

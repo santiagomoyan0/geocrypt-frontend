@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Button, Alert } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect } from 'react';
+import { fileService } from './lib/api';
 
 const formatFileSize = (bytes) => {
   if (!bytes || bytes === 0) return '0 B';
@@ -25,6 +26,29 @@ const FileDetailScreen = () => {
     Alert.alert('Descargar', `Descargando ${file.filename || file.name}`);
   };
 
+  const handleDelete = () => {
+    Alert.alert(
+      'Eliminar archivo',
+      `¿Estás seguro de que deseas eliminar "${file.filename || file.name}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await fileService.deleteFile(file.id);
+              Alert.alert('Eliminado', 'El archivo ha sido eliminado.');
+              navigation.goBack();
+            } catch (error) {
+              Alert.alert('Error', 'No se pudo eliminar el archivo.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{file.filename || file.name || 'Archivo sin nombre'}</Text>
@@ -41,6 +65,8 @@ const FileDetailScreen = () => {
         );
       })}
       <Button title="Descargar" onPress={handleDownload} />
+      <View style={{ height: 10 }} />
+      <Button title="Eliminar" color="#d32f2f" onPress={handleDelete} />
     </View>
   );
 };
