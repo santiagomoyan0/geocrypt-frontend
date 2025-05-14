@@ -246,20 +246,63 @@ export const fileService = {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.error('Error en la respuesta del servidor:', {
+          status: response.status,
+          statusText: response.statusText
+        });
+        throw new Error(`Error del servidor: ${response.status} ${response.statusText}`);
       }
+
+      // Verificar el tipo de contenido
+      const contentType = response.headers.get('content-type');
+      console.log('Tipo de contenido recibido:', contentType);
 
       // Obtener el blob
       const blob = await response.blob();
+      console.log('Tamaño del blob recibido:', blob.size);
+
+      if (blob.size === 0) {
+        throw new Error('El archivo recibido está vacío');
+      }
       
-      // Convertir el blob a base64
+      // Convertir el blob a base64 de manera más robusta
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
+        
         reader.onload = () => {
-          const base64 = reader.result.split(',')[1];
-          resolve(base64);
+          try {
+            console.log('FileReader completado, procesando resultado...');
+            const result = reader.result;
+            if (!result) {
+              throw new Error('No se pudo leer el contenido del archivo');
+            }
+            
+            const base64 = result.split(',')[1];
+            if (!base64) {
+              throw new Error('No se pudo extraer el contenido base64 del archivo');
+            }
+            
+            console.log('Archivo convertido a base64 exitosamente');
+            resolve(base64);
+          } catch (error) {
+            console.error('Error al procesar el contenido:', error);
+            reject(new Error('Error al procesar el contenido del archivo: ' + error.message));
+          }
         };
-        reader.onerror = reject;
+
+        reader.onerror = (error) => {
+          console.error('Error en FileReader:', error);
+          reject(new Error('Error al leer el archivo: ' + error.message));
+        };
+
+        reader.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const progress = (event.loaded / event.total) * 100;
+            console.log(`Progreso de lectura: ${progress.toFixed(2)}%`);
+          }
+        };
+
+        console.log('Iniciando lectura del blob...');
         reader.readAsDataURL(blob);
       });
     } catch (error) {
