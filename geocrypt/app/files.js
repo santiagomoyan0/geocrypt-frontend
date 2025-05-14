@@ -37,14 +37,14 @@ const FilesScreen = () => {
     <TouchableOpacity style={styles.folderItem} onPress={() => router.push({ pathname: '/folder-files', params: { geohash: item.geohash, files: JSON.stringify(item.files) } })}>
       <View style={styles.folderIconContainer}>
         <Ionicons name="folder" size={28} color="#007AFF" />
-      </View>
+        </View>
       <View style={styles.folderInfo}>
         <Text style={styles.folderName}>{item.geohash}</Text>
         <Text style={styles.folderCount}>{item.files.length} archivo(s)</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={20} color="#666" />
-    </TouchableOpacity>
-  );
+        </View>
+        <Ionicons name="chevron-forward" size={20} color="#666" />
+      </TouchableOpacity>
+    );
 
   return (
     <SafeAreaView style={styles.safeArea}>

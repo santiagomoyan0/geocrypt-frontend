@@ -228,26 +228,48 @@ export const fileService = {
 
   downloadFile: async (fileId, latitude, longitude) => {
     try {
-      // Verificar acceso al archivo
-      await crypto.verifyFileAccess(fileId, latitude, longitude);
+      // Generar el geohash
+      const gh = ngeohash.encode(latitude, longitude, 7);
       
-      console.log('Descargando archivo:', { fileId });
-      const response = await api.get(`/download/${fileId}`, {
-        responseType: 'blob',
+      console.log('Descargando archivo:', { fileId, geohash: gh });
+      
+      // Obtener el token
+      const token = await AsyncStorage.getItem('token');
+      
+      // Usar fetch directamente para la descarga
+      const response = await fetch(`${API_URL}/files/download/${fileId}?geohash=${gh}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Obtener el blob
+      const blob = await response.blob();
       
-      // Descifrar el contenido
-      const decryptedContent = await crypto.decryptFile(
-        await response.data.text(),
-        latitude,
-        longitude,
-        fileId.split('-').pop() // Obtener el tipo de archivo del ID
-      );
-      
-      console.log('Archivo descifrado exitosamente');
-      return decryptedContent;
+      // Convertir el blob a base64
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
     } catch (error) {
       console.error('Error al descargar archivo:', error);
+      if (error.response) {
+        console.error('Detalles del error:', {
+          status: error.response.status,
+          data: error.response.data
+        });
+      }
       throw error;
     }
   },
