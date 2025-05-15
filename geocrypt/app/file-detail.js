@@ -125,9 +125,9 @@ const FileDetailScreen = () => {
               
               // Descifrar el contenido
               const decryptedContent = await crypto.decryptFile(encryptedContent, latitude, longitude);
-              
-              // Crear el nombre del archivo
-              const fileName = file.filename || file.name || 'archivo_descargado';
+
+              // Crear el nombre del archivo (sin la extensión .enc)
+              const fileName = (file.filename || file.name || 'archivo_descargado').replace('.enc', '');
               
               // Crear un archivo temporal con el contenido descifrado
               const tempFileUri = `${FileSystem.cacheDirectory}${fileName}`;
@@ -190,8 +190,8 @@ const FileDetailScreen = () => {
                 const encryptedContent = await fileService.downloadFile(file.id, latitude, longitude);
                 const decryptedContent = await crypto.decryptFile(encryptedContent, latitude, longitude);
                 
-                // Crear archivo temporal
-                const fileName = file.filename || file.name || 'archivo_compartido';
+                // Crear archivo temporal (sin la extensión .enc)
+                const fileName = (file.filename || file.name || 'archivo_compartido').replace('.enc', '');
                 const tempFileUri = `${FileSystem.cacheDirectory}${fileName}`;
                 
                 await FileSystem.writeAsStringAsync(tempFileUri, decryptedContent, {
