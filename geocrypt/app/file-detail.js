@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Button, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, Button, Alert, Linking, Platform } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect } from 'react';
@@ -15,6 +15,45 @@ const formatFileSize = (bytes) => {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const saveFile = async (uri, filename, mimetype) => {
+  try {
+    if (Platform.OS === "android") {
+      const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+
+      if (permissions.granted) {
+        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+
+        const savedUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          filename,
+          mimetype
+        );
+        
+        await FileSystem.writeAsStringAsync(savedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+        Alert.alert('Éxito', 'Archivo guardado exitosamente');
+        return true;
+      } else {
+        Alert.alert('Permiso denegado', 'No se pudo guardar el archivo. Intentando compartir...');
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri);
+        }
+        return false;
+      }
+    } else {
+      // Para iOS, usamos el sistema de compartir
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+        return true;
+      }
+      return false;
+    }
+  } catch (error) {
+    console.error('Error al guardar el archivo:', error);
+    Alert.alert('Error', 'No se pudo guardar el archivo');
+    return false;
+  }
 };
 
 const FileDetailScreen = () => {
@@ -76,12 +115,6 @@ const FileDetailScreen = () => {
                 return;
               }
 
-              // Verificar permisos de almacenamiento
-              const hasStoragePermission = await requestStoragePermission();
-              if (!hasStoragePermission) {
-                return;
-              }
-
               // Obtener la ubicación actual del dispositivo
               const location = await Location.getCurrentPositionAsync({});
               const { latitude, longitude } = location.coords;
@@ -102,38 +135,21 @@ const FileDetailScreen = () => {
                 encoding: FileSystem.EncodingType.Base64
               });
 
-              try {
-                // Mover el archivo al directorio de documentos
-                const finalUri = `${FileSystem.documentDirectory}${fileName}`;
-                await FileSystem.moveAsync({
-                  from: tempFileUri,
-                  to: finalUri
-                });
+              // Intentar guardar el archivo
+              const saved = await saveFile(tempFileUri, fileName, file.mimetype || 'application/octet-stream');
 
-                // Compartir el archivo usando expo-sharing
-                try {
-                  if (await Sharing.isAvailableAsync()) {
-                    await Sharing.shareAsync(finalUri);
-                  } else {
-                    Alert.alert('No disponible', 'No se puede compartir el archivo en este dispositivo');
-                  }
-                } catch (e) {
-                  console.error('Error al compartir el archivo:', e);
-                  Alert.alert('Error', 'No se pudo compartir el archivo');
+              // Limpiar el archivo temporal
+              try {
+                const tempInfo = await FileSystem.getInfoAsync(tempFileUri);
+                if (tempInfo.exists) {
+                  await FileSystem.deleteAsync(tempFileUri);
                 }
-              } catch (e) {
-                console.error('Error al mover el archivo:', e);
-                Alert.alert('Error', 'No se pudo guardar el archivo');
-              } finally {
-                // Limpiar el archivo temporal si aún existe
-                try {
-                  const tempInfo = await FileSystem.getInfoAsync(tempFileUri);
-                  if (tempInfo.exists) {
-                    await FileSystem.deleteAsync(tempFileUri);
-                  }
-                } catch (cleanupError) {
-                  console.error('Error al limpiar archivo temporal:', cleanupError);
-                }
+              } catch (cleanupError) {
+                console.error('Error al limpiar archivo temporal:', cleanupError);
+              }
+
+              if (!saved) {
+                Alert.alert('Información', 'El archivo se ha compartido en lugar de guardarse');
               }
             } catch (error) {
               console.error('Error al descargar el archivo:', error);
