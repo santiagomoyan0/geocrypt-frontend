@@ -161,6 +161,77 @@ const FileDetailScreen = () => {
     );
   };
 
+  const handleShare = async () => {
+    try {
+      if (!file.id) {
+        Alert.alert('Error', 'No se puede compartir el archivo: ID no válido');
+        return;
+      }
+
+      Alert.alert('Compartir', `Compartiendo ${file.filename || file.name}`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Compartir',
+            onPress: async () => {
+              try {
+                // Verificar permisos de ubicación
+                const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+                if (locationStatus !== 'granted') {
+                  Alert.alert('Error', 'Se requieren permisos de ubicación para compartir el archivo');
+                  return;
+                }
+
+                // Obtener la ubicación actual
+                const location = await Location.getCurrentPositionAsync({});
+                const { latitude, longitude } = location.coords;
+                
+                // Descargar y descifrar el archivo
+                const encryptedContent = await fileService.downloadFile(file.id, latitude, longitude);
+                const decryptedContent = await crypto.decryptFile(encryptedContent, latitude, longitude);
+                
+                // Crear archivo temporal
+                const fileName = file.filename || file.name || 'archivo_compartido';
+                const tempFileUri = `${FileSystem.cacheDirectory}${fileName}`;
+                
+                await FileSystem.writeAsStringAsync(tempFileUri, decryptedContent, {
+                  encoding: FileSystem.EncodingType.Base64
+                });
+
+                // Verificar si sharing está disponible
+                if (await Sharing.isAvailableAsync()) {
+                  await Sharing.shareAsync(tempFileUri, {
+                    mimeType: file.mimetype || 'application/octet-stream',
+                    dialogTitle: `Compartir ${fileName}`,
+                    UTI: file.mimetype // Para iOS
+                  });
+                } else {
+                  Alert.alert('No disponible', 'No se puede compartir el archivo en este dispositivo');
+                }
+
+                // Limpiar archivo temporal
+                try {
+                  const tempInfo = await FileSystem.getInfoAsync(tempFileUri);
+                  if (tempInfo.exists) {
+                    await FileSystem.deleteAsync(tempFileUri);
+                  }
+                } catch (cleanupError) {
+                  console.error('Error al limpiar archivo temporal:', cleanupError);
+                }
+              } catch (error) {
+                console.error('Error al compartir el archivo:', error);
+                Alert.alert('Error', 'No se pudo compartir el archivo');
+              }
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error al iniciar compartir:', error);
+      Alert.alert('Error', 'No se pudo iniciar el proceso de compartir');
+    }
+  };
+
   const handleDelete = () => {
     if (!file.id) {
       Alert.alert('Error', 'No se puede eliminar el archivo: ID no válido');
@@ -197,23 +268,38 @@ const FileDetailScreen = () => {
       {Object.entries(file).map(([key, value]) => {
         if (
           ['filename', 'name', 'created_at', 'size'].includes(key)
-        ) return null; // ya los mostramos arriba
+        ) return null;
         return (
           <Text key={key}>
             {key}: {typeof value === 'object' ? JSON.stringify(value) : String(value)}
           </Text>
         );
       })}
-      <Button title="Descargar" onPress={handleDownload} />
-      <View style={{ height: 10 }} />
-      <Button title="Eliminar" color="#d32f2f" onPress={handleDelete} />
+      <View style={styles.buttonContainer}>
+        <Button title="Descargar" onPress={handleDownload} />
+        <View style={{ height: 10 }} />
+        <Button title="Compartir" onPress={handleShare} />
+        <View style={{ height: 10 }} />
+        <Button title="Eliminar" color="#d32f2f" onPress={handleDelete} />
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: 'center' },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 10 },
+  container: { 
+    flex: 1, 
+    padding: 20, 
+    justifyContent: 'center' 
+  },
+  title: { 
+    fontSize: 22, 
+    fontWeight: 'bold', 
+    marginBottom: 10 
+  },
+  buttonContainer: {
+    marginTop: 20,
+  }
 });
 
 export default FileDetailScreen; 
