@@ -141,6 +141,71 @@ export const authService = {
   },
 };
 
+// Función centralizada para manejar archivos
+export const handleFile = async (fileId, latitude, longitude, operation = 'download') => {
+  try {
+    // Generar el geohash
+    const gh = ngeohash.encode(latitude, longitude, 7);
+    
+    console.log('Operación con archivo:', { fileId, geohash: gh, operation });
+    
+    // Obtener el token
+    const token = await AsyncStorage.getItem('token');
+    
+    // Usar fetch directamente para la descarga
+    const response = await fetch(`${API_URL}/files/download/${fileId}?geohash=${gh}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error del servidor: ${response.status} ${response.statusText}`);
+    }
+
+    // Verificar el tipo de contenido
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const errorText = await response.text();
+      throw new Error(errorText);
+    }
+
+    // Obtener el blob
+    const blob = await response.blob();
+    if (blob.size === 0) {
+      throw new Error('El archivo recibido está vacío');
+    }
+
+    // Convertir el blob a base64
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = () => {
+        try {
+          const base64 = reader.result.split(',')[1];
+          if (!base64) {
+            throw new Error('No se pudo extraer el contenido base64 del archivo');
+          }
+          resolve(base64);
+        } catch (error) {
+          reject(new Error('Error al procesar el contenido del archivo: ' + error.message));
+        }
+      };
+
+      reader.onerror = (error) => {
+        reject(new Error('Error al leer el archivo: ' + error.message));
+      };
+
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error('Error en handleFile:', error);
+    throw error;
+  }
+};
+
 // Servicios de archivos
 export const fileService = {
   uploadFile: async (file, latitude, longitude) => {
@@ -225,108 +290,12 @@ export const fileService = {
     }
   },
 
-
   downloadFile: async (fileId, latitude, longitude) => {
     try {
-      // Generar el geohash
-      const gh = ngeohash.encode(latitude, longitude, 7);
-      
-      console.log('Descargando archivo:', { fileId, geohash: gh });
-      
-      // Obtener el token
-      const token = await AsyncStorage.getItem('token');
-      
-      // Usar fetch directamente para la descarga
-      const response = await fetch(`${API_URL}/files/download/${fileId}?geohash=${gh}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        console.error('Error en la respuesta del servidor:', {
-          status: response.status,
-          statusText: response.statusText
-        });
-        throw new Error(`Error del servidor: ${response.status} ${response.statusText}`);
-      }
-
-      // Verificar el tipo de contenido
-      const contentType = response.headers.get('content-type');
-      console.log('Tipo de contenido recibido:', contentType);
-
-      if (contentType && contentType.includes('application/json')) {
-        // Es un error, leer el texto y mostrarlo
-        const errorText = await response.text();
-        console.error('Respuesta JSON de error:', errorText);
-        let errorMsg = 'El servidor respondió con un error.';
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMsg = errorJson.detail || errorJson.message || errorText;
-        } catch {
-          errorMsg = errorText;
-        }
-        throw new Error(errorMsg);
-      }
-
-      // Obtener el blob
-      const blob = await response.blob();
-      console.log('Tamaño del blob recibido:', blob.size);
-
-      if (blob.size === 0) {
-        throw new Error('El archivo recibido está vacío');
-      }
-      
-      // Convertir el blob a base64 de manera más robusta
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        
-        reader.onload = () => {
-          try {
-            console.log('FileReader completado, procesando resultado...');
-            const result = reader.result;
-            if (!result) {
-              throw new Error('No se pudo leer el contenido del archivo');
-            }
-            
-            const base64 = result.split(',')[1];
-            if (!base64) {
-              throw new Error('No se pudo extraer el contenido base64 del archivo');
-            }
-            
-            console.log('Archivo convertido a base64 exitosamente');
-            resolve(base64);
-          } catch (error) {
-            console.error('Error al procesar el contenido:', error);
-            reject(new Error('Error al procesar el contenido del archivo: ' + error.message));
-          }
-        };
-
-        reader.onerror = (error) => {
-          console.error('Error en FileReader:', error);
-          reject(new Error('Error al leer el archivo: ' + error.message));
-        };
-
-        reader.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const progress = (event.loaded / event.total) * 100;
-            console.log(`Progreso de lectura: ${progress.toFixed(2)}%`);
-          }
-        };
-
-        console.log('Iniciando lectura del blob...');
-        reader.readAsDataURL(blob);
-      });
+      const arrayBuffer = await handleFile(fileId, latitude, longitude, 'download');
+      return arrayBuffer;
     } catch (error) {
       console.error('Error al descargar archivo:', error);
-      if (error.response) {
-        console.error('Detalles del error:', {
-          status: error.response.status,
-          data: error.response.data
-        });
-      }
       throw error;
     }
   },

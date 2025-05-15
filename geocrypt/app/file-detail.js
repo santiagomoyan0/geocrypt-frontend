@@ -23,28 +23,41 @@ const saveFile = async (uri, filename, mimetype) => {
       const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
 
       if (permissions.granted) {
-        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+        // Leer el contenido binario
+        const fileContent = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
 
         const savedUri = await FileSystem.StorageAccessFramework.createFileAsync(
           permissions.directoryUri,
           filename,
-          mimetype
+          mimetype || 'application/octet-stream'
         );
         
-        await FileSystem.writeAsStringAsync(savedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+        // Escribir el contenido binario
+        await FileSystem.writeAsStringAsync(savedUri, fileContent, { 
+          encoding: FileSystem.EncodingType.UTF8 
+        });
+        
         Alert.alert('Éxito', 'Archivo guardado exitosamente');
         return true;
       } else {
         Alert.alert('Permiso denegado', 'No se pudo guardar el archivo. Intentando compartir...');
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri);
+          await Sharing.shareAsync(uri, {
+            mimeType: mimetype || 'application/octet-stream',
+            dialogTitle: `Compartir ${filename}`,
+            UTI: mimetype // Para iOS
+          });
         }
         return false;
       }
     } else {
       // Para iOS, usamos el sistema de compartir
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri);
+        await Sharing.shareAsync(uri, {
+          mimeType: mimetype || 'application/octet-stream',
+          dialogTitle: `Compartir ${filename}`,
+          UTI: mimetype // Para iOS
+        });
         return true;
       }
       return false;
@@ -121,21 +134,32 @@ const FileDetailScreen = () => {
               console.log('Ubicación actual:', { latitude, longitude });
               
               // Descargar el archivo
-              const encryptedContent = await fileService.downloadFile(file.id, latitude, longitude);
+              const base64Content = await fileService.downloadFile(file.id, latitude, longitude);
               
               // Descifrar el contenido
-              const decryptedContent = await crypto.decryptFile(encryptedContent, latitude, longitude);
+              const decryptedContent = await crypto.decryptFile(base64Content, latitude, longitude);
 
               // Crear el nombre del archivo (sin la extensión .enc)
               const fileName = (file.filename || file.name || 'archivo_descargado').replace('.enc', '');
               
-              // Crear un archivo temporal con el contenido descifrado
+              // Crear un archivo temporal con el contenido binario
               const tempFileUri = `${FileSystem.cacheDirectory}${fileName}`;
-              await FileSystem.writeAsStringAsync(tempFileUri, decryptedContent, {
-                encoding: FileSystem.EncodingType.Base64
+              
+              // Convertir base64 a binario
+              const binaryContent = atob(decryptedContent);
+              
+              // Escribir el archivo como binario
+              await FileSystem.writeAsStringAsync(tempFileUri, binaryContent, {
+                encoding: FileSystem.EncodingType.UTF8
               });
 
-              // Intentar guardar el archivo
+              // Verificar que el archivo se escribió correctamente
+              const fileInfo = await FileSystem.getInfoAsync(tempFileUri);
+              if (!fileInfo.exists) {
+                throw new Error('No se pudo crear el archivo temporal');
+              }
+
+              // Intentar guardar el archivo con el mimetype original
               const saved = await saveFile(tempFileUri, fileName, file.mimetype || 'application/octet-stream');
 
               // Limpiar el archivo temporal
@@ -187,16 +211,26 @@ const FileDetailScreen = () => {
                 const { latitude, longitude } = location.coords;
                 
                 // Descargar y descifrar el archivo
-                const encryptedContent = await fileService.downloadFile(file.id, latitude, longitude);
-                const decryptedContent = await crypto.decryptFile(encryptedContent, latitude, longitude);
+                const base64Content = await fileService.downloadFile(file.id, latitude, longitude);
+                const decryptedContent = await crypto.decryptFile(base64Content, latitude, longitude);
                 
                 // Crear archivo temporal (sin la extensión .enc)
                 const fileName = (file.filename || file.name || 'archivo_compartido').replace('.enc', '');
                 const tempFileUri = `${FileSystem.cacheDirectory}${fileName}`;
                 
-                await FileSystem.writeAsStringAsync(tempFileUri, decryptedContent, {
-                  encoding: FileSystem.EncodingType.Base64
+                // Convertir base64 a binario
+                const binaryContent = atob(decryptedContent);
+                
+                // Escribir el archivo como binario
+                await FileSystem.writeAsStringAsync(tempFileUri, binaryContent, {
+                  encoding: FileSystem.EncodingType.UTF8
                 });
+
+                // Verificar que el archivo se escribió correctamente
+                const fileInfo = await FileSystem.getInfoAsync(tempFileUri);
+                if (!fileInfo.exists) {
+                  throw new Error('No se pudo crear el archivo temporal');
+                }
 
                 // Verificar si sharing está disponible
                 if (await Sharing.isAvailableAsync()) {
