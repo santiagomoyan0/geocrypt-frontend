@@ -257,6 +257,20 @@ export const fileService = {
       const contentType = response.headers.get('content-type');
       console.log('Tipo de contenido recibido:', contentType);
 
+      if (contentType && contentType.includes('application/json')) {
+        // Es un error, leer el texto y mostrarlo
+        const errorText = await response.text();
+        console.error('Respuesta JSON de error:', errorText);
+        let errorMsg = 'El servidor respondió con un error.';
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMsg = errorJson.detail || errorJson.message || errorText;
+        } catch {
+          errorMsg = errorText;
+        }
+        throw new Error(errorMsg);
+      }
+
       // Obtener el blob
       const blob = await response.blob();
       console.log('Tamaño del blob recibido:', blob.size);

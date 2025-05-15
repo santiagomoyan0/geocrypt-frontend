@@ -7,6 +7,7 @@ import { fileService } from './lib/api';
 import * as FileSystem from 'expo-file-system';
 import * as crypto from './crypto';
 import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 
 const formatFileSize = (bytes) => {
   if (!bytes || bytes === 0) return '0 B';
@@ -109,8 +110,17 @@ const FileDetailScreen = () => {
                   to: finalUri
                 });
 
-                console.log('Archivo guardado en:', finalUri);
-                Alert.alert('Éxito', `Archivo guardado en: ${finalUri}`);
+                // Compartir el archivo usando expo-sharing
+                try {
+                  if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(finalUri);
+                  } else {
+                    Alert.alert('No disponible', 'No se puede compartir el archivo en este dispositivo');
+                  }
+                } catch (e) {
+                  console.error('Error al compartir el archivo:', e);
+                  Alert.alert('Error', 'No se pudo compartir el archivo');
+                }
               } catch (e) {
                 console.error('Error al mover el archivo:', e);
                 Alert.alert('Error', 'No se pudo guardar el archivo');
