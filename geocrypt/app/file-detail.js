@@ -19,31 +19,63 @@ const formatFileSize = (bytes) => {
 
 const saveFile = async (uri, filename, mimetype) => {
   try {
+    console.log('Iniciando saveFile con:', { uri, filename, mimetype });
+    
     if (Platform.OS === "android") {
+      console.log('Plataforma Android detectada, solicitando permisos...');
       const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      console.log('Resultado de permisos:', permissions);
 
       if (permissions.granted) {
-        // Leer el contenido binario
-        const fileContent = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+        console.log('Permisos concedidos, leyendo contenido del archivo...');
+        // Leer el contenido como base64
+        const fileContent = await FileSystem.readAsStringAsync(uri, { 
+          encoding: FileSystem.EncodingType.Base64 
+        });
+        console.log('Contenido leído, longitud:', fileContent.length);
 
+        // Validar que el contenido sea base64 válido
+        if (!/^[A-Za-z0-9+/=]+$/.test(fileContent)) {
+          throw new Error('El contenido del archivo no es un base64 válido');
+        }
+
+        // Calcular el tamaño esperado del contenido binario
+        const expectedBinarySize = Math.floor((fileContent.length * 3) / 4);
+        console.log('Tamaño esperado del contenido binario:', expectedBinarySize, 'bytes');
+
+        console.log('Creando archivo usando SAF...');
+        // Crear el archivo usando SAF
         const savedUri = await FileSystem.StorageAccessFramework.createFileAsync(
           permissions.directoryUri,
           filename,
-          mimetype || 'application/octet-stream'
+          mimetype
         );
+        console.log('Archivo creado en:', savedUri);
         
-        // Escribir el contenido binario
+        console.log('Escribiendo contenido al archivo...');
+        // Escribir el contenido como binario
         await FileSystem.writeAsStringAsync(savedUri, fileContent, { 
-          encoding: FileSystem.EncodingType.UTF8 
+          encoding: FileSystem.EncodingType.Base64 
         });
+
+        // Verificar que el archivo se escribió correctamente
+        const fileInfo = await FileSystem.getInfoAsync(savedUri);
+        console.log('Información del archivo guardado:', fileInfo);
         
+        if (!fileInfo.exists || fileInfo.size === 0) {
+          throw new Error('No se pudo escribir el archivo correctamente');
+        }
+
+        console.log('Archivo guardado exitosamente');
         Alert.alert('Éxito', 'Archivo guardado exitosamente');
         return true;
       } else {
+        console.log('Permisos denegados, intentando compartir...');
         Alert.alert('Permiso denegado', 'No se pudo guardar el archivo. Intentando compartir...');
         if (await Sharing.isAvailableAsync()) {
+          console.log('Compartiendo archivo...');
           await Sharing.shareAsync(uri, {
-            mimeType: mimetype || 'application/octet-stream',
+            mimeType: mimetype,
             dialogTitle: `Compartir ${filename}`,
             UTI: mimetype // Para iOS
           });
@@ -51,10 +83,12 @@ const saveFile = async (uri, filename, mimetype) => {
         return false;
       }
     } else {
+      console.log('Plataforma iOS detectada, usando sistema de compartir...');
       // Para iOS, usamos el sistema de compartir
       if (await Sharing.isAvailableAsync()) {
+        console.log('Compartiendo archivo en iOS...');
         await Sharing.shareAsync(uri, {
-          mimeType: mimetype || 'application/octet-stream',
+          mimeType: mimetype,
           dialogTitle: `Compartir ${filename}`,
           UTI: mimetype // Para iOS
         });
@@ -63,8 +97,12 @@ const saveFile = async (uri, filename, mimetype) => {
       return false;
     }
   } catch (error) {
-    console.error('Error al guardar el archivo:', error);
-    Alert.alert('Error', 'No se pudo guardar el archivo');
+    console.error('Error detallado en saveFile:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    Alert.alert('Error', 'No se pudo guardar el archivo: ' + error.message);
     return false;
   }
 };
@@ -108,7 +146,7 @@ const FileDetailScreen = () => {
   };
 
   const handleDownload = () => {
-    console.log(file);
+    console.log('Iniciando descarga de archivo:', file);
     if (!file.id) {
       Alert.alert('Error', 'No se puede descargar el archivo: ID no válido');
       return;
@@ -121,52 +159,110 @@ const FileDetailScreen = () => {
           text: 'Descargar',
           onPress: async () => {
             try {
-              // Verificar permisos de ubicación
+              console.log('Verificando permisos de ubicación...');
               const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+              console.log('Estado de permisos de ubicación:', locationStatus);
+              
               if (locationStatus !== 'granted') {
                 Alert.alert('Error', 'Se requieren permisos de ubicación para descargar el archivo');
                 return;
               }
 
-              // Obtener la ubicación actual del dispositivo
               const location = await Location.getCurrentPositionAsync({});
               const { latitude, longitude } = location.coords;
               console.log('Ubicación actual:', { latitude, longitude });
               
-              // Descargar el archivo
+              console.log('Iniciando descarga del archivo...');
               const base64Content = await fileService.downloadFile(file.id, latitude, longitude);
+              console.log('Contenido descargado, longitud:', base64Content.length);
               
-              // Descifrar el contenido
+              if (!/^[A-Za-z0-9+/=]+$/.test(base64Content)) {
+                console.error('Contenido base64 inválido');
+                throw new Error('El contenido descargado no es un base64 válido');
+              }
+              
+              console.log('Iniciando desencriptación...');
               const decryptedContent = await crypto.decryptFile(base64Content, latitude, longitude);
+              console.log('Contenido desencriptado, longitud:', decryptedContent.length);
+
+              if (!/^[A-Za-z0-9+/=]+$/.test(decryptedContent)) {
+                console.error('Contenido desencriptado no es base64 válido');
+                throw new Error('El contenido desencriptado no es un base64 válido');
+              }
+
+              // Calcular el tamaño esperado del contenido binario
+              const expectedBinarySize = Math.floor((decryptedContent.length * 3) / 4);
+              console.log('Tamaño esperado del contenido binario:', expectedBinarySize, 'bytes');
 
               // Crear el nombre del archivo (sin la extensión .enc)
               const fileName = (file.filename || file.name || 'archivo_descargado').replace('.enc', '');
+              console.log('Nombre del archivo procesado:', fileName);
               
-              // Crear un archivo temporal con el contenido binario
+              // Crear un archivo temporal con el contenido base64
               const tempFileUri = `${FileSystem.cacheDirectory}${fileName}`;
+              console.log('URI del archivo temporal:', tempFileUri);
               
-              // Convertir base64 a binario
-              const binaryContent = atob(decryptedContent);
-              
-              // Escribir el archivo como binario
-              await FileSystem.writeAsStringAsync(tempFileUri, binaryContent, {
-                encoding: FileSystem.EncodingType.UTF8
+              console.log('Escribiendo archivo temporal...');
+              // Escribir el archivo directamente usando el contenido base64
+              await FileSystem.writeAsStringAsync(tempFileUri, decryptedContent, {
+                encoding: FileSystem.EncodingType.Base64
               });
 
               // Verificar que el archivo se escribió correctamente
               const fileInfo = await FileSystem.getInfoAsync(tempFileUri);
+              console.log('Información del archivo temporal:', fileInfo);
+              
               if (!fileInfo.exists) {
                 throw new Error('No se pudo crear el archivo temporal');
               }
 
-              // Intentar guardar el archivo con el mimetype original
-              const saved = await saveFile(tempFileUri, fileName, file.mimetype || 'application/octet-stream');
+              // Verificar que el tamaño del archivo temporal sea el esperado
+              console.log('Tamaño esperado del archivo:', expectedBinarySize, 'bytes');
+              console.log('Tamaño real del archivo:', fileInfo.size, 'bytes');
+
+              if (fileInfo.size === 0) {
+                throw new Error('El archivo temporal está vacío');
+              }
+
+              // Permitir una pequeña diferencia debido al padding
+              const sizeDifference = Math.abs(fileInfo.size - expectedBinarySize);
+              if (sizeDifference > 2) {
+                console.warn('El tamaño del archivo temporal no coincide con el esperado. Diferencia:', sizeDifference, 'bytes');
+              }
+
+              // Determinar el mimetype correcto
+              let mimetype = file.mimetype;
+              if (!mimetype) {
+                console.log('Mimetype no proporcionado, detectando por extensión...');
+                const extension = fileName.split('.').pop().toLowerCase();
+                const mimeTypes = {
+                  'pdf': 'application/pdf',
+                  'jpg': 'image/jpeg',
+                  'jpeg': 'image/jpeg',
+                  'png': 'image/png',
+                  'gif': 'image/gif',
+                  'txt': 'text/plain',
+                  'doc': 'application/msword',
+                  'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                  'xls': 'application/vnd.ms-excel',
+                  'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                };
+                mimetype = mimeTypes[extension] || 'application/octet-stream';
+                console.log('Mimetype detectado:', mimetype);
+              }
+
+              console.log('Guardando archivo con mimetype:', mimetype);
+              
+              // Intentar guardar el archivo con el mimetype determinado
+              const saved = await saveFile(tempFileUri, fileName, mimetype);
 
               // Limpiar el archivo temporal
               try {
+                console.log('Limpiando archivo temporal...');
                 const tempInfo = await FileSystem.getInfoAsync(tempFileUri);
                 if (tempInfo.exists) {
                   await FileSystem.deleteAsync(tempFileUri);
+                  console.log('Archivo temporal eliminado');
                 }
               } catch (cleanupError) {
                 console.error('Error al limpiar archivo temporal:', cleanupError);
@@ -176,8 +272,12 @@ const FileDetailScreen = () => {
                 Alert.alert('Información', 'El archivo se ha compartido en lugar de guardarse');
               }
             } catch (error) {
-              console.error('Error al descargar el archivo:', error);
-              Alert.alert('Error', 'No se pudo descargar el archivo. Verifica tu ubicación.');
+              console.error('Error detallado en handleDownload:', {
+                message: error.message,
+                stack: error.stack,
+                code: error.code
+              });
+              Alert.alert('Error', 'No se pudo descargar el archivo: ' + error.message);
             }
           },
         },
